@@ -1,19 +1,55 @@
+parameters:
+- name: LLVM_Branch
+  displayName: LLVM Branch
+  type: string
+  default: release/10.x
+
+- name: Architecture
+  displayName: Architecture
+  type: string
+  default: x86_64
+
+- name: Build_Type
+  displayName: Build Type
+  type: string
+  default: Release
+
+- name: Build_Machine
+  displayName: Build Machine
+  type: string
+  default: 'macOS-latest'
+
 variables:
-  llvm_repo: https://github.com/llvm/llvm-project.git
-  llvm_branch: release/10.x
-  llvm_build_type: Release
-  llvm_arch: x86_64
-  llvm_additional_parameters: "-DLLDB_RELOCATABLE_PYTHON=1 -DLLDB_INCLUDE_TESTS=OFF -DLLDB_BUILD_FRAMEWORK=1"
+- name: llvm_repo
+  value: https://github.com/llvm/llvm-project.git
+
+- name: llvm_branch
+  value: ${{parameters.LLVM_Branch}}
+
+- name: llvm_build_type
+  value: ${{parameters.Build_Type}}
+
+- name: llvm_arch
+  value: ${{parameters.Architecture}}
+
+- name: llvm_additional_parameters
+  value: "-DLLDB_RELOCATABLE_PYTHON=1 -DLLDB_INCLUDE_TESTS=OFF -DLLDB_BUILD_FRAMEWORK=1"
+
   # TODO: fix lldb_mi_repo and lldb_mi_branch (https://github.com/lldb-tools/lldb-mi/pull/37 and https://github.com/lldb-tools/lldb-mi/pull/39)
-  lldb_mi_repo: https://github.com/WardenGnaw/lldb-mi # TODO: Change to lldb-tools
-  lldb_mi_branch: release/cpptools # TODO: Change to main
-  lldb_mi_additional_parameters: "-DUSE_LLDB_FRAMEWORK=1"
+- name: lldb_mi_repo
+  value: https://github.com/WardenGnaw/lldb-mi  # TODO: Change to lldb-tools
+
+- name: lldb_mi_branch
+  value: release/cpptools # TODO: Change to master
+
+- name: lldb_mi_additional_parameters
+  value: "-DUSE_LLDB_FRAMEWORK=1"
 
 jobs:
 - job: LLDB_MI
   timeoutInMinutes: 360
   pool:
-    vmImage: 'macOS-latest'
+    vmImage: ${{parameters.Build_Machine}}
   steps:
   - task: CmdLine@2
     displayName: 'Install Dependencies'
@@ -29,6 +65,9 @@ jobs:
           echo "##[command] $1"
           $1
         }
+
+        log_and_exec_cmd "sudo rm -rf /Library/Developer/CommandLineTools"
+        log_and_exec_cmd "sudo xcode-select --switch /Applications/XCode.app"
 
         log_and_exec_cmd "cd $(Build.StagingDirectory)"
         log_and_exec_cmd "mkdir $(Build.StagingDirectory)/buildspace"
@@ -112,6 +151,9 @@ jobs:
 
         # Set rpath next to the lldb-mi executable LLDB.Framework
         log_and_exec_cmd "install_name_tool -add_rpath @executable_path/. ./debugAdapters/lldb-mi/bin/lldb-mi"
+
+        # Add entitlements
+        log_and_exec_cmd "codesign -s - -f --entitlements $(Build.SourcesDirectory)/Build/lldb-mi/debugger-entitlements.plist ./debugAdapters/lldb-mi/bin/lldb-mi"
 
         # Grab NOTICE.TXT
         cp $(Build.SourcesDirectory)/Build/lldb-mi/NOTICE.TXT ./debugAdapters/lldb-mi/.
